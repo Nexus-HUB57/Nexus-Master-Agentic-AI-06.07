@@ -1,0 +1,784 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: agents
+    description: Agent registry — the workers in the orchestration mesh
+  - name: tasks
+    description: Task lifecycle and execution
+  - name: workflows
+    description: Multi-step goal orchestration
+  - name: knowledge
+    description: Shared long-term memory (RAG-style knowledge base)
+  - name: dashboard
+    description: HUB-wide aggregates and activity feed
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List all agents in the registry
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Register a new agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/{id}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get a single agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Remove an agent from the registry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List all tasks
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+        - name: workflowId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a single task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /tasks/{id}/assign:
+    post:
+      operationId: assignTask
+      tags: [tasks]
+      summary: Auto-assign the best-fit agent to a task (skill match + trust score bidding)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task with assigned agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: No eligible agent available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks/{id}/run:
+    post:
+      operationId: runTask
+      tags: [tasks]
+      summary: Execute an assigned task through the perception-reasoning-action cycle
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Executed task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Task is not assigned to an agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workflows:
+    get:
+      operationId: listWorkflows
+      tags: [workflows]
+      summary: List all workflows
+      responses:
+        "200":
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workflow"
+    post:
+      operationId: createWorkflow
+      tags: [workflows]
+      summary: Create a workflow shell (does not create tasks yet)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workflow"
+
+  /workflows/{id}:
+    get:
+      operationId: getWorkflow
+      tags: [workflows]
+      summary: Get a workflow with its tasks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Workflow with tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorkflow
+      tags: [workflows]
+      summary: Delete a workflow and its tasks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /workflows/{id}/orchestrate:
+    post:
+      operationId: orchestrateWorkflow
+      tags: [workflows]
+      summary: Decompose the workflow goal into tasks, auto-assign agents, and start execution
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Orchestrated workflow with generated tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /knowledge:
+    get:
+      operationId: listKnowledgeEntries
+      tags: [knowledge]
+      summary: List knowledge base entries
+      responses:
+        "200":
+          description: List of knowledge entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeEntry"
+    post:
+      operationId: createKnowledgeEntry
+      tags: [knowledge]
+      summary: Add a knowledge entry to shared memory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeEntryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeEntry"
+
+  /knowledge/{id}:
+    delete:
+      operationId: deleteKnowledgeEntry
+      tags: [knowledge]
+      summary: Delete a knowledge entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /knowledge/search:
+    get:
+      operationId: searchKnowledge
+      tags: [knowledge]
+      summary: Retrieve knowledge entries relevant to a query (RAG-style retrieval)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching knowledge entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeEntry"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: HUB-wide counts, task breakdown, top agents, and recent activity
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      operationId: listActivityEvents
+      tags: [dashboard]
+      summary: Recent orchestration activity feed
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of activity events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    AgentStatus:
+      type: string
+      enum: [idle, busy, offline]
+
+    Agent:
+      type: object
+      required:
+        [id, name, skillType, status, trustScore, tasksCompleted, tasksFailed, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        skillType:
+          type: string
+          description: Domain skill tag used for task matching, e.g. "research", "code", "data-analysis"
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+        trustScore:
+          type: number
+          description: Rolling performance score from 0-100 driving task-assignment bidding
+        tasksCompleted:
+          type: integer
+        tasksFailed:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentInput:
+      type: object
+      required: [name, skillType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        skillType:
+          type: string
+          minLength: 1
+
+    AgentUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        skillType:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/AgentStatus"
+
+    TaskStatus:
+      type: string
+      enum: [pending, assigned, running, completed, failed]
+
+    TaskPriority:
+      type: string
+      enum: [low, medium, high]
+
+    Task:
+      type: object
+      required:
+        [id, goal, status, priority, assignedAgentId, workflowId, result, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        goal:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        assignedAgentId:
+          type: ["integer", "null"]
+        workflowId:
+          type: ["integer", "null"]
+        result:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TaskInput:
+      type: object
+      required: [goal]
+      properties:
+        goal:
+          type: string
+          minLength: 1
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        workflowId:
+          type: ["integer", "null"]
+
+    TaskUpdate:
+      type: object
+      properties:
+        goal:
+          type: string
+          minLength: 1
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          $ref: "#/components/schemas/TaskPriority"
+        result:
+          type: ["string", "null"]
+
+    WorkflowStatus:
+      type: string
+      enum: [draft, running, completed, failed]
+
+    Workflow:
+      type: object
+      required: [id, name, goal, status, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        goal:
+          type: string
+        status:
+          $ref: "#/components/schemas/WorkflowStatus"
+        createdAt:
+          type: string
+          format: date-time
+
+    WorkflowInput:
+      type: object
+      required: [name, goal]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        goal:
+          type: string
+          minLength: 1
+
+    WorkflowDetail:
+      type: object
+      required: [id, name, goal, status, createdAt, tasks]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        goal:
+          type: string
+        status:
+          $ref: "#/components/schemas/WorkflowStatus"
+        createdAt:
+          type: string
+          format: date-time
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+
+    KnowledgeEntry:
+      type: object
+      required: [id, title, content, tags, createdAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    KnowledgeEntryInput:
+      type: object
+      required: [title, content]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+
+    ActivityEvent:
+      type: object
+      required: [id, kind, message, createdAt, agentId, taskId]
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          description: e.g. "agent_registered", "task_created", "task_assigned", "task_completed", "task_failed", "workflow_orchestrated"
+        message:
+          type: string
+        agentId:
+          type: ["integer", "null"]
+        taskId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    TaskStatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        count:
+          type: integer
+
+    DashboardSummary:
+      type: object
+      required:
+        [
+          totalAgents,
+          activeAgents,
+          totalTasks,
+          tasksByStatus,
+          totalWorkflows,
+          runningWorkflows,
+          totalKnowledgeEntries,
+          topAgents,
+          recentActivity,
+        ]
+      properties:
+        totalAgents:
+          type: integer
+        activeAgents:
+          type: integer
+        totalTasks:
+          type: integer
+        tasksByStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskStatusCount"
+        totalWorkflows:
+          type: integer
+        runningWorkflows:
+          type: integer
+        totalKnowledgeEntries:
+          type: integer
+        topAgents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+        recentActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEvent"
